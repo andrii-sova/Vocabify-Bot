@@ -364,6 +364,42 @@ public class DatabaseService : IDatabaseService
         await ctx.SaveChangesAsync();
     }
 
+    /// <summary>Returns words ordered by most errors first, filtered to those with at least one wrong answer.</summary>
+    public async Task<List<Word>> GetWordsForMistakesAsync(long studentId, int count)
+    {
+        await using var ctx = Ctx();
+
+        // Fetch stats ordered by wrong count descending
+        var topStats = await ctx.WordStats
+            .Where(s => s.StudentId == studentId && s.WrongCount > 0)
+            .OrderByDescending(s => s.WrongCount)
+            .Take(count)
+            .ToListAsync();
+
+        if (topStats.Count == 0) return new List<Word>();
+
+        var wordIds = topStats.Select(s => s.WordId).ToHashSet();
+        var words   = await ctx.Words.Where(w => wordIds.Contains(w.Id)).ToListAsync();
+
+        // Preserve the error-count order
+        return topStats
+            .Select(s => words.FirstOrDefault(w => w.Id == s.WordId))
+            .OfType<Word>()
+            .ToList();
+    }
+
+    /// <summary>Halves the wrong count for a word after a correct answer in Mistakes mode.</summary>
+    public async Task ReduceWrongCountAsync(long studentId, int wordId)
+    {
+        await using var ctx = Ctx();
+        var stat = await ctx.WordStats
+            .FirstOrDefaultAsync(s => s.StudentId == studentId && s.WordId == wordId);
+        if (stat is null) return;
+
+        stat.WrongCount = Math.Max(0, stat.WrongCount / 2);
+        await ctx.SaveChangesAsync();
+    }
+
     public async Task<List<string>> GetTopicsForStudentAsync(long studentId)
     {
         await using var ctx = Ctx();

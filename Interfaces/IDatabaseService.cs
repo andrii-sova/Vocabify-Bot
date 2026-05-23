@@ -29,4 +29,6 @@ public interface IDatabaseService
     Task<List<Word>> GetWordsByLevelAsync(long studentId, string level, int top = 50);
     Task<List<string>> GetAllWordOriginalsAsync(long studentId);
     Task<List<Word>> SearchWordsAsync(long studentId, string query, int maxResults = 15);
+    Task<List<Word>> GetWordsForMistakesAsync(long studentId, int count);
+    Task ReduceWrongCountAsync(long studentId, int wordId);
 }

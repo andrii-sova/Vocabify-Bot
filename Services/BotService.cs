@@ -509,7 +509,28 @@ public class BotService
 
         // ── Quiz setup ────────────────────────────────────────────────────────
         else if (data == "menu_quiz")
+        {
+            MutateState(userId, s => s.IsMistakesQuiz = false);
             await SendQuizDirectionAsync(chatId, ct);
+        }
+
+        else if (data == "menu_mistakes")
+        {
+            MutateState(userId, s => s.IsMistakesQuiz = true);
+            await _bot.SendMessage(chatId,
+                "💪 *Work on Mistakes*\n\nI'll select your most-missed words. Choose direction:",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: new InlineKeyboardMarkup(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("Eng → Ukr", "quiz_dir_eu"),
+                        InlineKeyboardButton.WithCallbackData("Ukr → Eng", "quiz_dir_ue")
+                    },
+                    new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", "quiz_cancel") }
+                }),
+                cancellationToken: ct);
+        }
 
         else if (data.StartsWith("quiz_dir_"))
         {
@@ -525,7 +546,10 @@ public class BotService
             var state = GetState(userId);
             state.QuizAmount = amt;
             SetState(userId, state);
-            await SendQuizLevelAsync(chatId, ct);
+            if (state.IsMistakesQuiz)
+                await StartMistakesQuizAsync(userId, chatId, ct);
+            else
+                await SendQuizLevelAsync(chatId, ct);
         }
         else if (data == "quiz_amt_custom")
         {
@@ -533,7 +557,7 @@ public class BotService
             state.State = UserState.AwaitingQuizCustomAmount;
             SetState(userId, state);
             await _bot.SendMessage(chatId, "✏️ Enter the number of words (2–100):",
-                replyMarkup: BackKeyboard("menu_quiz"), cancellationToken: ct);
+                replyMarkup: BackKeyboard(state.IsMistakesQuiz ? "menu_mistakes" : "menu_quiz"), cancellationToken: ct);
         }
         else if (data.StartsWith("quiz_lvl_"))
         {
@@ -950,7 +974,11 @@ public class BotService
         state.State      = UserState.None;
         state.QuizAmount = n;
         SetState(userId, state);
-        await SendQuizLevelAsync(chatId, ct);
+
+        if (state.IsMistakesQuiz)
+            await StartMistakesQuizAsync(userId, chatId, ct);
+        else
+            await SendQuizLevelAsync(chatId, ct);
     }
 
     private async Task StartQuizAsync(long userId, long chatId, CancellationToken ct)
@@ -1045,8 +1073,10 @@ public class BotService
         if (isCorrect) state.QuizScore++;
         SetState(userId, state);
 
-        // Record result asynchronously (don't await — keep response snappy)
+        // Record result — in Mistakes mode also halve the wrong count on correct answers
         _ = _db.RecordQuizAnswerAsync(userId, correct.Id, isCorrect);
+        if (isCorrect && state.IsMistakesQuiz)
+            _ = _db.ReduceWrongCountAsync(userId, correct.Id);
 
         var correctLabel = Truncate(QuizAnswer(correct, direction), 60);
         var emoji = isCorrect ? "✅" : "❌";
@@ -1079,10 +1109,11 @@ public class BotService
 
     private async Task SendQuizResultsAsync(long userId, long chatId, CancellationToken ct)
     {
-        var state = GetState(userId);
-        var total = state.QuizWords.Count;
-        var score = state.QuizScore;
-        var pct   = total > 0 ? (int)Math.Round(score * 100.0 / total) : 0;
+        var state       = GetState(userId);
+        var total       = state.QuizWords.Count;
+        var score       = state.QuizScore;
+        var pct         = total > 0 ? (int)Math.Round(score * 100.0 / total) : 0;
+        var isMistakes  = state.IsMistakesQuiz;
 
         var medal = pct switch
         {
@@ -1092,17 +1123,60 @@ public class BotService
             _     => "📚"
         };
 
+        var encouragement = isMistakes
+            ? pct switch
+            {
+                >= 90 => "Fantastic — you've crushed those mistakes! 🎉",
+                >= 70 => "Great progress! Keep drilling the tough ones 💪",
+                >= 50 => "Good effort! Repeat this session to clear more errors 📖",
+                _     => "Don't give up — every attempt reduces your errors! 💡"
+            }
+            : pct switch
+            {
+                >= 90 => "Excellent work! 🎉",
+                >= 70 => "Good job! Keep it up 💪",
+                >= 50 => "Not bad! Practice more 📖",
+                _     => "Keep studying — you'll get there! 💡"
+            };
+
+        var title = isMistakes ? "💪 *Mistakes Session Complete!*" : "🧩 *Quiz Complete!*";
+
         ResetState(userId);
         await _bot.SendMessage(chatId,
-            $"{medal} *Quiz Complete!*\n\n" +
-            $"Score: *{score}/{total}* ({pct}%)\n\n" +
-            (pct >= 90 ? "Excellent work! 🎉" :
-             pct >= 70 ? "Good job! Keep it up 💪" :
-             pct >= 50 ? "Not bad! Practice more 📖" :
-                         "Keep studying — you'll get there! 💡"),
+            $"{medal} {title}\n\nScore: *{score}/{total}* ({pct}%)\n\n{encouragement}",
             parseMode: ParseMode.Markdown, cancellationToken: ct);
 
         await GoMenu(userId, chatId, ct);
+    }
+
+    private async Task StartMistakesQuizAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        var count = state.QuizAmount > 0 ? state.QuizAmount : 10;
+        var words = await _db.GetWordsForMistakesAsync(userId, count);
+
+        if (words.Count < 2)
+        {
+            ResetState(userId);
+            await _bot.SendMessage(chatId,
+                "🎉 No mistakes to practice! You haven't made enough errors yet, or you've already mastered everything. Try the regular quiz first.",
+                cancellationToken: ct);
+            await GoMenu(userId, chatId, ct);
+            return;
+        }
+
+        state.QuizWords      = words;
+        state.QuizIndex      = 0;
+        state.QuizScore      = 0;
+        state.IsMistakesQuiz = true;
+        SetState(userId, state);
+
+        var dir = state.QuizDirection == "eu" ? "Eng → Ukr" : "Ukr → Eng";
+        await _bot.SendMessage(chatId,
+            $"💪 *Work on Mistakes*\n*{dir}* | {words.Count} most-missed words\n\nCorrect answers will cut each word's error count in half. Let's go! 🔥",
+            parseMode: ParseMode.Markdown, cancellationToken: ct);
+
+        await SendQuizQuestionAsync(userId, chatId, ct);
     }
 
     private static string Truncate(string s, int max) =>
@@ -1353,6 +1427,7 @@ public class BotService
                     new[]
                     {
                         InlineKeyboardButton.WithCallbackData("🧩 Quiz",          "menu_quiz"),
+                        InlineKeyboardButton.WithCallbackData("💪 Mistakes",      "menu_mistakes"),
                         InlineKeyboardButton.WithCallbackData("🔍 Search Words",  "menu_search")
                     },
                     new[] { InlineKeyboardButton.WithCallbackData("✏️ My Name",   "menu_set_name") }

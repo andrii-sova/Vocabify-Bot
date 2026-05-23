@@ -38,10 +38,11 @@ public class ConversationState
     public List<VocabifyBot.Models.Word> PoolPreview { get; set; } = new();
 
     // Quiz session
-    public string?            QuizDirection { get; set; }  // "eu" (Eng→Ukr) | "ue" (Ukr→Eng)
-    public string?            QuizLevel     { get; set; }  // null = any
-    public string?            QuizTopic     { get; set; }  // null = any
-    public int                QuizAmount    { get; set; }
+    public string?            QuizDirection  { get; set; }  // "eu" (Eng→Ukr) | "ue" (Ukr→Eng)
+    public string?            QuizLevel      { get; set; }  // null = any
+    public string?            QuizTopic      { get; set; }  // null = any
+    public int                QuizAmount     { get; set; }
+    public bool               IsMistakesQuiz { get; set; }  // true = Work on Mistakes mode
     public List<VocabifyBot.Models.Word> QuizWords { get; set; } = new();
     public int                QuizIndex     { get; set; }
     public int                QuizScore     { get; set; }
