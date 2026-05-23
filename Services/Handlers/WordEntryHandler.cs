@@ -1,20 +1,19 @@
+using Telegram.Bot;
+using Telegram.Bot.Types.Enums;
 using VocabifyBot.Interfaces;
 using VocabifyBot.Models;
 using VocabifyBot.UI;
-using Telegram.Bot;
-using Telegram.Bot.Types.Enums;
 
 namespace VocabifyBot.Services.Handlers;
 
-public sealed class WordEntryHandler : HandlerBase
+public sealed class WordEntryHandler(
+    ITelegramBotClient bot,
+    IDatabaseService db,
+    ConversationStateManager states,
+    IOpenAiService openAi)
+    : HandlerBase(bot, db, states)
 {
-    private readonly IOpenAiService _openAi;
-
-    public WordEntryHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states, IOpenAiService openAi)
-        : base(bot, db, states)
-    {
-        _openAi = openAi;
-    }
+    private IOpenAiService OpenAi { get; } = openAi;
 
     public Task HandleCallbackAsync(string data, long userId, long chatId, CancellationToken ct) => data switch
     {
@@ -33,7 +32,7 @@ public sealed class WordEntryHandler : HandlerBase
         }
 
         var notice = await Bot.SendMessage(chatId, "⏳ Translating with AI…", cancellationToken: ct);
-        var translation = await _openAi.TranslateWordsAsync(inputText);
+        var translation = await OpenAi.TranslateWordsAsync(inputText);
 
         try
         {
@@ -67,7 +66,7 @@ public sealed class WordEntryHandler : HandlerBase
         }
 
         var notice = await Bot.SendMessage(chatId, "🤖 Detecting topic…", cancellationToken: ct);
-        var topic = await _openAi.DetectTopicAsync(string.Join("\n", state.PendingWords.Select(word => word.Original)));
+        var topic = await OpenAi.DetectTopicAsync(string.Join("\n", state.PendingWords.Select(word => word.Original)));
 
         try
         {

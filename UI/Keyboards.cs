@@ -35,6 +35,7 @@ public static class Keyboards
         new[]
         {
             InlineKeyboardButton.WithCallbackData("🧩 Quiz",           "menu_quiz"),
+            InlineKeyboardButton.WithCallbackData("💪 Mistakes",       "menu_mistakes"),
             InlineKeyboardButton.WithCallbackData("🔍 Search Words",   "menu_search")
         },
         new[] { InlineKeyboardButton.WithCallbackData("✏️ My Name",    "menu_set_name") }
@@ -99,13 +100,11 @@ public static class Keyboards
             _ => "quiz_cancel"
         };
 
-        return new InlineKeyboardMarkup(new[]
-        {
-            buttons[..4],
-            buttons[4..],
-            new[] { InlineKeyboardButton.WithCallbackData("🔀 Any",    $"{callbackPrefix}any") },
-            new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel",  cancelCallback) }
-        });
+        return new InlineKeyboardMarkup(
+            buttons.Chunk(4)
+                .Append(new[] { InlineKeyboardButton.WithCallbackData("🔀 Any",   $"{callbackPrefix}any") })
+                .Append(new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", cancelCallback) })
+                .ToArray());
     }
 
     public static InlineKeyboardMarkup SendWordChoice() => new(new[]
@@ -183,16 +182,19 @@ public static class Keyboards
         new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back",        "back_to_menu") }
     });
 
-    public static InlineKeyboardMarkup BrowseNavigation(bool hasMore) => new(new[]
-    {
-        new[]
+    public static InlineKeyboardMarkup BrowseNavigation(bool hasMore) => hasMore
+        ? new(new[]
         {
-            hasMore
-                ? InlineKeyboardButton.WithCallbackData("▶️ Next", "browse_next")
-                : InlineKeyboardButton.WithCallbackData("✅ Done",  "browse_cancel"),
-            InlineKeyboardButton.WithCallbackData("❌ Cancel", "browse_cancel")
-        }
-    });
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("▶️ Next",   "browse_next"),
+                InlineKeyboardButton.WithCallbackData("❌ Cancel", "browse_cancel")
+            }
+        })
+        : new(new[]
+        {
+            new[] { InlineKeyboardButton.WithCallbackData("✅ Done", "browse_cancel") }
+        });
 
     public static InlineKeyboardMarkup ConfirmRemoveStudent(long studentId) => new(new[]
     {

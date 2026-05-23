@@ -1,18 +1,15 @@
+using Telegram.Bot;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 using VocabifyBot.Interfaces;
 using VocabifyBot.Models;
 using VocabifyBot.UI;
-using Telegram.Bot;
-using Telegram.Bot.Types.Enums;
 
 namespace VocabifyBot.Services.Handlers;
 
-public sealed class StudentHandler : HandlerBase
+public sealed class StudentHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
+    : HandlerBase(bot, db, states)
 {
-    public StudentHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
-        : base(bot, db, states)
-    {
-    }
-
     public async Task HandleCallbackAsync(string data, long userId, long chatId, CancellationToken ct)
     {
         switch (data)
@@ -40,14 +37,17 @@ public sealed class StudentHandler : HandlerBase
                 await SendWordListAsync(chatId, await Db.GetWordsForStudentAsync(userId), "📚 Your vocabulary:", ct);
                 break;
             case "vocab_level":
-                await Bot.SendMessage(chatId, "🔤 Select a CEFR level:",
-                    replyMarkup: Keyboards.VocabLevelButtons(), cancellationToken: ct);
+                await Bot.SendMessage(chatId, "🔤 Select a CEFR level:", replyMarkup: Keyboards.VocabLevelButtons(), cancellationToken: ct);
                 break;
             default:
                 if (data.StartsWith("vocab_t_"))
+                {
                     await ShowWordsByTopicAsync(userId, chatId, data, ct);
+                }
                 else if (data.StartsWith("vocab_lvl_"))
+                {
                     await ShowWordsByLevelAsync(userId, chatId, data["vocab_lvl_".Length..], ct);
+                }
                 break;
         }
     }
@@ -89,20 +89,20 @@ public sealed class StudentHandler : HandlerBase
                 return;
             }
 
-            // No topics but there are words — still offer level filter + all
-            await Bot.SendMessage(chatId, "📚 Browse your vocabulary:",
-                replyMarkup: new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
+            await Bot.SendMessage(
+                chatId,
+                "📚 Browse your vocabulary:",
+                replyMarkup: new InlineKeyboardMarkup(new[]
                 {
-                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🔤 By Level",  "vocab_level") },
-                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") }
+                    new[] { InlineKeyboardButton.WithCallbackData("🔤 By Level", "vocab_level") },
+                    new[] { InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") }
                 }),
                 cancellationToken: ct);
             return;
         }
 
         MutateState(userId, state => state.CachedTopics = topics);
-        await Bot.SendMessage(chatId, "📚 Browse vocabulary by topic:",
-            replyMarkup: Keyboards.VocabTopicButtons(topics), cancellationToken: ct);
+        await Bot.SendMessage(chatId, "📚 Browse vocabulary by topic:", replyMarkup: Keyboards.VocabTopicButtons(topics), cancellationToken: ct);
     }
 
     private async Task ShowWordsByLevelAsync(long userId, long chatId, string level, CancellationToken ct)

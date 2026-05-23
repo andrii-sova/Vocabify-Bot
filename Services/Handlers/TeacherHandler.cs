@@ -1,19 +1,22 @@
+using System.Text;
+using Telegram.Bot;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 using VocabifyBot.Interfaces;
 using VocabifyBot.Models;
 using VocabifyBot.UI;
-using Telegram.Bot;
-using Telegram.Bot.Types.Enums;
 
 namespace VocabifyBot.Services.Handlers;
 
-public sealed class TeacherHandler : HandlerBase
+public sealed class TeacherHandler(
+    ITelegramBotClient bot,
+    IDatabaseService db,
+    ConversationStateManager states,
+    IOpenAiService openAi)
+    : HandlerBase(bot, db, states)
 {
     private const int ChunkSize = 20;
-
-    public TeacherHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
-        : base(bot, db, states)
-    {
-    }
+    private IOpenAiService OpenAi { get; } = openAi;
 
     public async Task HandleCallbackAsync(string data, long userId, long chatId, CancellationToken ct)
     {
@@ -59,6 +62,27 @@ public sealed class TeacherHandler : HandlerBase
                 ResetState(userId);
                 await SendMenuAsync(chatId, "Teacher", ct);
                 return;
+            case "gen_start":
+                await SendGenLevelSelectionAsync(userId, chatId, ct);
+                return;
+            case "gen_topic_skip":
+                MutateState(userId, state =>
+                {
+                    state.State = UserState.None;
+                    state.GenTopic = null;
+                });
+                await GenerateAndShowPreviewAsync(userId, chatId, ct);
+                return;
+            case "gen_retry":
+                await GenerateAndShowPreviewAsync(userId, chatId, ct);
+                return;
+            case "gen_confirm":
+                await ConfirmGenPreviewAsync(userId, chatId, ct);
+                return;
+            case "gen_cancel":
+                ResetState(userId);
+                await SendMenuAsync(chatId, "Teacher", ct);
+                return;
             case "browse_next":
                 await HandleBrowseNextAsync(userId, chatId, ct);
                 return;
@@ -98,6 +122,18 @@ public sealed class TeacherHandler : HandlerBase
             return;
         }
 
+        if (data.StartsWith("gen_level_"))
+        {
+            await HandleGenLevelAsync(userId, chatId, data, ct);
+            return;
+        }
+
+        if (data.StartsWith("gen_count_"))
+        {
+            await HandleGenCountAsync(userId, chatId, data, ct);
+            return;
+        }
+
         if (data.StartsWith("words_sent_to_"))
         {
             await HandleWordsSentStudentAsync(userId, chatId, data, ct);
@@ -126,6 +162,52 @@ public sealed class TeacherHandler : HandlerBase
         {
             await HandleConfirmRemoveAsync(userId, chatId, data, ct);
         }
+    }
+
+    public async Task HandleGenTopicInputAsync(long userId, long chatId, string topic, CancellationToken ct)
+    {
+        MutateState(userId, state =>
+        {
+            state.State = UserState.None;
+            state.GenTopic = string.IsNullOrWhiteSpace(topic) ? null : topic.Trim();
+        });
+
+        await GenerateAndShowPreviewAsync(userId, chatId, ct);
+    }
+
+    public async Task HandleSearchQueryAsync(long userId, long chatId, string query, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        var studentId = state.SelectedStudentId;
+        if (studentId is null)
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+
+        var results = await Db.SearchWordsAsync(studentId.Value, query);
+        ResetState(userId);
+
+        var navigation = Keyboards.TeacherSearchResultNavigation(studentId.Value);
+        if (results.Count == 0)
+        {
+            await Bot.SendMessage(
+                chatId,
+                $"🔍 No results found for *{WordFormatter.EscapeMarkdown(query)}*.",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: navigation,
+                cancellationToken: ct);
+            return;
+        }
+
+        var student = await Db.GetUserAsync(studentId.Value);
+        var body = string.Join("\n\n", results.Select(WordFormatter.FormatWordLine));
+        await Bot.SendMessage(
+            chatId,
+            $"🔍 *{results.Count}* result(s) for *{WordFormatter.EscapeMarkdown(query)}* in {WordFormatter.EscapeMarkdown(student?.DisplayName ?? string.Empty)}'s vocabulary:\n\n{body}",
+            parseMode: ParseMode.Markdown,
+            replyMarkup: navigation,
+            cancellationToken: ct);
     }
 
     private async Task ShowStudentSelectionAsync(long teacherId, long chatId, string mode, CancellationToken ct)
@@ -161,29 +243,40 @@ public sealed class TeacherHandler : HandlerBase
     private async Task ShowMyStudentsAsync(long teacherId, long chatId, CancellationToken ct)
     {
         var students = await Db.GetStudentsForTeacherAsync(teacherId);
-        var pending  = await Db.GetPendingInvitationsForTeacherAsync(teacherId);
+        var pending = await Db.GetPendingInvitationsForTeacherAsync(teacherId);
 
         if (students.Count == 0 && pending.Count == 0)
         {
-            await Bot.SendMessage(chatId, "You have no students yet. Use *Add Student* to invite someone.",
-                parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown, cancellationToken: ct);
+            await Bot.SendMessage(
+                chatId,
+                "You have no students yet. Use *Add Student* to invite someone.",
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
             return;
         }
 
-        var lines = new System.Text.StringBuilder("👥 *Your students:*\n\n");
+        var lines = new StringBuilder("👥 *Your students:*\n\n");
         var i = 1;
-        foreach (var s in students)
-            lines.AppendLine($"{i++}. ✅ {WordFormatter.EscapeMarkdown(s.DisplayName)}");
-        foreach (var p in pending)
-            lines.AppendLine($"{i++}. ⏳ @{WordFormatter.EscapeMarkdown(p.StudentUsername)} _(awaiting activation)_");
+        foreach (var student in students)
+        {
+            lines.AppendLine($"{i++}. ✅ {WordFormatter.EscapeMarkdown(student.DisplayName)}");
+        }
 
-        await Bot.SendMessage(chatId, lines.ToString().TrimEnd(),
-            parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown, cancellationToken: ct);
+        foreach (var invitation in pending)
+        {
+            lines.AppendLine($"{i++}. ⏳ @{WordFormatter.EscapeMarkdown(invitation.StudentUsername)} _(awaiting activation)_");
+        }
+
+        await Bot.SendMessage(chatId, lines.ToString().TrimEnd(), parseMode: ParseMode.Markdown, cancellationToken: ct);
     }
 
     private async Task HandleStudentSelectedAsync(long userId, long chatId, string data, CancellationToken ct)
     {
-        var studentId = long.Parse(data["send_to_".Length..]);
+        if (!long.TryParse(data["send_to_".Length..], out var studentId))
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
         var student = await Db.GetUserAsync(studentId);
 
         SetState(userId, new ConversationState { SelectedStudentId = studentId });
@@ -339,9 +432,196 @@ public sealed class TeacherHandler : HandlerBase
         await SendMenuAsync(chatId, "Teacher", ct);
     }
 
+    private async Task SendGenLevelSelectionAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.SelectedStudentId is null)
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+
+        MutateState(userId, currentState =>
+        {
+            currentState.State = UserState.None;
+            currentState.GenLevel = null;
+            currentState.GenCount = 0;
+            currentState.GenTopic = null;
+            currentState.GenPreview = new();
+        });
+
+        await Bot.SendMessage(
+            chatId,
+            "🤖 *Generate by Level*\n\nSelect the CEFR level for the new words:",
+            parseMode: ParseMode.Markdown,
+            replyMarkup: Keyboards.CefrLevelButtons("gen_level_"),
+            cancellationToken: ct);
+    }
+
+    private async Task HandleGenLevelAsync(long userId, long chatId, string data, CancellationToken ct)
+    {
+        var level = data["gen_level_".Length..];
+        MutateState(userId, state =>
+        {
+            state.State = UserState.None;
+            state.GenLevel = level;
+            state.GenCount = 0;
+            state.GenTopic = null;
+            state.GenPreview = new();
+        });
+
+        await Bot.SendMessage(
+            chatId,
+            $"📦 How many *{level}* words would you like to generate?",
+            parseMode: ParseMode.Markdown,
+            replyMarkup: Keyboards.GenCountButtons(),
+            cancellationToken: ct);
+    }
+
+    private async Task HandleGenCountAsync(long userId, long chatId, string data, CancellationToken ct)
+    {
+        if (!int.TryParse(data["gen_count_".Length..], out var count))
+        {
+            return;
+        }
+
+        MutateState(userId, state =>
+        {
+            state.State = UserState.AwaitingGenTopic;
+            state.GenCount = count;
+            state.GenTopic = null;
+            state.GenPreview = new();
+        });
+
+        var state = GetState(userId);
+        await Bot.SendMessage(
+            chatId,
+            $"🏷️ Enter a topic for the *{state.GenLevel}* words _(optional)_.\n\n_e.g. Business English, Travel, Phrasal Verbs_",
+            parseMode: ParseMode.Markdown,
+            replyMarkup: Keyboards.GenTopicPromptButtons(),
+            cancellationToken: ct);
+    }
+
+    private async Task GenerateAndShowPreviewAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.SelectedStudentId is null || string.IsNullOrWhiteSpace(state.GenLevel) || state.GenCount <= 0)
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+
+        var notice = await Bot.SendMessage(chatId, "⏳ Generating…", cancellationToken: ct);
+        try
+        {
+            var existingWords = await Db.GetAllWordOriginalsAsync(state.SelectedStudentId.Value);
+            var generated = await OpenAi.GenerateWordsByLevelAsync(state.GenLevel, state.GenCount, state.GenTopic, existingWords);
+            var preview = WordFormatter.BuildPendingWordsFromGeneration(generated);
+
+            MutateState(userId, currentState =>
+            {
+                currentState.State = UserState.None;
+                currentState.GenPreview = preview;
+            });
+
+            if (preview.Count == 0)
+            {
+                await Bot.SendMessage(
+                    chatId,
+                    "⚠️ AI couldn't generate words. Try regenerating or change the settings.",
+                    replyMarkup: new InlineKeyboardMarkup(new[]
+                    {
+                        new[] { InlineKeyboardButton.WithCallbackData("🔄 Regenerate", "gen_retry") },
+                        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "gen_start") }
+                    }),
+                    cancellationToken: ct);
+                return;
+            }
+
+            var student = await Db.GetUserAsync(state.SelectedStudentId.Value);
+            var topicNote = state.GenTopic is not null ? $" · 🏷️ _{WordFormatter.EscapeMarkdown(state.GenTopic)}_" : string.Empty;
+            var header = $"🤖 *{preview.Count} {state.GenLevel} words* for *{WordFormatter.EscapeMarkdown(student?.DisplayName ?? string.Empty)}*{topicNote}:";
+            var body = string.Join("\n\n", preview.Select(word =>
+            {
+                var levelTag = word.EnglishLevel is not null ? $"*[{word.EnglishLevel}]* " : string.Empty;
+                return $"{levelTag}{WordFormatter.EscapeMarkdown(word.Translation)}";
+            }));
+
+            await Bot.SendMessage(
+                chatId,
+                $"{header}\n\n{body}",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: Keyboards.GenPreviewButtons(),
+                cancellationToken: ct);
+        }
+        finally
+        {
+            try
+            {
+                await Bot.DeleteMessage(chatId, notice.MessageId, cancellationToken: ct);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private async Task ConfirmGenPreviewAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.SelectedStudentId is null || state.GenPreview.Count == 0 || string.IsNullOrWhiteSpace(state.GenLevel))
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+
+        var batchId = Guid.NewGuid();
+        var words = state.GenPreview.Select(word => new Word
+        {
+            OriginalWord = word.Original,
+            Translation = word.Translation,
+            EnglishLevel = word.EnglishLevel ?? state.GenLevel,
+            Topic = state.GenTopic,
+            BatchId = batchId,
+            AddedByUserId = userId,
+            ForStudentId = state.SelectedStudentId.Value
+        }).ToList();
+
+        await Db.SaveWordsAsync(words);
+
+        var teacher = await Db.GetUserAsync(userId);
+        var student = await Db.GetUserAsync(state.SelectedStudentId.Value);
+        await Bot.SendMessage(
+            chatId,
+            $"✅ *{words.Count}* {state.GenLevel} words saved for *{WordFormatter.EscapeMarkdown(student?.DisplayName ?? string.Empty)}*!",
+            parseMode: ParseMode.Markdown,
+            cancellationToken: ct);
+
+        try
+        {
+            var body = string.Join("\n\n", words.Select(word => $"*[{word.EnglishLevel}]* {WordFormatter.EscapeMarkdown(word.Translation)}"));
+            var topicNote = state.GenTopic is not null ? $" · {WordFormatter.EscapeMarkdown(state.GenTopic)}" : string.Empty;
+            await Bot.SendMessage(
+                state.SelectedStudentId.Value,
+                $"📚 New *{state.GenLevel}* vocabulary from {WordFormatter.EscapeMarkdown(teacher?.DisplayName ?? "your teacher")}{topicNote}:\n\n{body}",
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
+        }
+        catch
+        {
+        }
+
+        ResetState(userId);
+        await SendMenuAsync(chatId, "Teacher", ct);
+    }
+
     private async Task HandleWordsSentStudentAsync(long userId, long chatId, string data, CancellationToken ct)
     {
-        var studentId = long.Parse(data["words_sent_to_".Length..]);
+        if (!long.TryParse(data["words_sent_to_".Length..], out var studentId))
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
         var student = await Db.GetUserAsync(studentId);
 
         MutateState(userId, state => state.BrowsingStudentId = studentId);
@@ -489,7 +769,11 @@ public sealed class TeacherHandler : HandlerBase
 
     private async Task HandleRemoveStudentAsync(long chatId, string data, CancellationToken ct)
     {
-        var studentId = long.Parse(data["remove_student_".Length..]);
+        if (!long.TryParse(data["remove_student_".Length..], out var studentId))
+        {
+            await SendMenuAsync(chatId, "Teacher", ct);
+            return;
+        }
         var student = await Db.GetUserAsync(studentId);
 
         await Bot.SendMessage(
@@ -502,7 +786,11 @@ public sealed class TeacherHandler : HandlerBase
 
     private async Task HandleConfirmRemoveAsync(long userId, long chatId, string data, CancellationToken ct)
     {
-        var studentId = long.Parse(data["confirm_remove_".Length..]);
+        if (!long.TryParse(data["confirm_remove_".Length..], out var studentId))
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
         var student = await Db.GetUserAsync(studentId);
 
         await Db.UnlinkTeacherStudentAsync(userId, studentId);
@@ -529,16 +817,12 @@ public sealed class TeacherHandler : HandlerBase
             .Select(group => group.ToList())
             .ToList();
 
-    // ── Search ────────────────────────────────────────────────────────────────
-
     private async Task ShowSearchStudentSelectionAsync(long teacherId, long chatId, CancellationToken ct)
     {
         var students = await Db.GetStudentsForTeacherAsync(teacherId);
         if (students.Count == 0)
         {
-            await Bot.SendMessage(chatId,
-                "You have no students yet. Use *Add Student* first.",
-                parseMode: ParseMode.Markdown, cancellationToken: ct);
+            await Bot.SendMessage(chatId, "You have no students yet. Use *Add Student* first.", parseMode: ParseMode.Markdown, cancellationToken: ct);
             return;
         }
 
@@ -551,12 +835,16 @@ public sealed class TeacherHandler : HandlerBase
 
     private async Task HandleSearchStudentSelectedAsync(long userId, long chatId, string data, CancellationToken ct)
     {
-        var studentId = long.Parse(data["search_for_".Length..]);
-        var student   = await Db.GetUserAsync(studentId);
+        if (!long.TryParse(data["search_for_".Length..], out var studentId))
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+        var student = await Db.GetUserAsync(studentId);
 
         SetState(userId, new ConversationState
         {
-            State             = UserState.AwaitingSearchQuery,
+            State = UserState.AwaitingSearchQuery,
             SelectedStudentId = studentId
         });
 
@@ -565,39 +853,6 @@ public sealed class TeacherHandler : HandlerBase
             $"🔍 Searching vocabulary for *{WordFormatter.EscapeMarkdown(student?.DisplayName ?? studentId.ToString())}*\n\nType the word or phrase to search:",
             parseMode: ParseMode.Markdown,
             replyMarkup: Keyboards.BackButton("back_to_menu"),
-            cancellationToken: ct);
-    }
-
-    public async Task HandleSearchQueryAsync(long userId, long chatId, string query, CancellationToken ct)
-    {
-        var state     = GetState(userId);
-        var studentId = state.SelectedStudentId;
-        if (studentId is null) { await GoMenuAsync(userId, chatId, ct); return; }
-
-        var results = await Db.SearchWordsAsync(studentId.Value, query);
-        ResetState(userId);
-
-        var navigation = Keyboards.TeacherSearchResultNavigation(studentId.Value);
-
-        if (results.Count == 0)
-        {
-            await Bot.SendMessage(
-                chatId,
-                $"🔍 No results found for *{WordFormatter.EscapeMarkdown(query)}*.",
-                parseMode: ParseMode.Markdown,
-                replyMarkup: navigation,
-                cancellationToken: ct);
-            return;
-        }
-
-        var student = await Db.GetUserAsync(studentId.Value);
-        var body    = string.Join("\n\n", results.Select(WordFormatter.FormatWordLine));
-
-        await Bot.SendMessage(
-            chatId,
-            $"🔍 *{results.Count}* result(s) for *{WordFormatter.EscapeMarkdown(query)}* in {WordFormatter.EscapeMarkdown(student?.DisplayName ?? string.Empty)}'s vocabulary:\n\n{body}",
-            parseMode: ParseMode.Markdown,
-            replyMarkup: navigation,
             cancellationToken: ct);
     }
 }

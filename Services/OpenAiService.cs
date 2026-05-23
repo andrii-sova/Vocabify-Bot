@@ -1,12 +1,12 @@
-using VocabifyBot.Interfaces;
 using OpenAI;
 using OpenAI.Chat;
+using VocabifyBot.Interfaces;
 
 namespace VocabifyBot.Services;
 
-public class OpenAiService : IOpenAiService
+public sealed class OpenAiService(string apiKey) : IOpenAiService
 {
-    private readonly ChatClient _chat;
+    private readonly ChatClient _chat = new OpenAIClient(apiKey).GetChatClient("gpt-4o-mini");
 
     private const string TranslationPrompt = @"You are an English-to-Ukrainian dictionary assistant for language learners.
 Translate English words or phrases into Ukrainian following EXACTLY this format for each entry (one entry per line):
@@ -24,19 +24,13 @@ Rules:
 Example output:
 [B2] put you off — відбити бажання, знеохотити, відвернути (від чогось); також: відкласти [пут ю оф] (The smell put me off my food — Запах відбив мені апетит; Don't let his comments put you off — Не дозволяй його коментарям знеохотити тебе)";
 
-    public OpenAiService(string apiKey)
-    {
-        var client = new OpenAIClient(apiKey);
-        _chat = client.GetChatClient("gpt-4o-mini");
-    }
-
     public async Task<string> TranslateWordsAsync(string words)
     {
         var result = await _chat.CompleteChatAsync(
             new SystemChatMessage(TranslationPrompt),
             new UserChatMessage($"Translate these words/phrases (one per line):\n{words.Trim()}")
         );
-        return result.Value.Content[0].Text.Trim();
+        return result.Value.Content is { Count: > 0 } content ? content[0].Text.Trim() : string.Empty;
     }
 
     public async Task<string> DetectTopicAsync(string words)
@@ -48,7 +42,7 @@ Example output:
                 "'Adjectives', 'Travel & Transport'). No explanation, just the topic name."),
             new UserChatMessage(words.Trim())
         );
-        return result.Value.Content[0].Text.Trim();
+        return result.Value.Content is { Count: > 0 } content ? content[0].Text.Trim() : string.Empty;
     }
 
     public async Task<string> GenerateWordsByLevelAsync(
@@ -82,6 +76,6 @@ Rules:
             new SystemChatMessage(systemPrompt),
             new UserChatMessage($"Generate {count} {level} words.")
         );
-        return result.Value.Content[0].Text.Trim();
+        return result.Value.Content is { Count: > 0 } content ? content[0].Text.Trim() : string.Empty;
     }
 }

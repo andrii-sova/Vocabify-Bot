@@ -1,19 +1,15 @@
-using VocabifyBot.Interfaces;
-using VocabifyBot.Models;
-using VocabifyBot.UI;
 using Telegram.Bot;
 using Telegram.Bot.Types.Enums;
 using TelegramUser = Telegram.Bot.Types.User;
+using VocabifyBot.Interfaces;
+using VocabifyBot.Models;
+using VocabifyBot.UI;
 
 namespace VocabifyBot.Services.Handlers;
 
-public sealed class RegistrationHandler : HandlerBase
+public sealed class RegistrationHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
+    : HandlerBase(bot, db, states)
 {
-    public RegistrationHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
-        : base(bot, db, states)
-    {
-    }
-
     public Task ShowRoleSelectionAsync(long chatId, CancellationToken ct) =>
         Bot.SendMessage(
             chatId,
@@ -22,7 +18,11 @@ public sealed class RegistrationHandler : HandlerBase
             replyMarkup: Keyboards.RoleSelection(),
             cancellationToken: ct);
 
-    public Task ShowMainMenuAsync(long chatId, string role, CancellationToken ct) => SendMenuAsync(chatId, role, ct);
+    public Task ShowMainMenuAsync(long chatId, long userId, string role, CancellationToken ct) =>
+        SendMenuAsync(chatId, userId, role, ct);
+
+    public Task ShowMainMenuAsync(long chatId, string role, CancellationToken ct) =>
+        SendMenuAsync(chatId, role, ct);
 
     public Task GoToMenuAsync(long userId, long chatId, CancellationToken ct) => GoMenuAsync(userId, chatId, ct);
 
@@ -68,26 +68,35 @@ public sealed class RegistrationHandler : HandlerBase
     public async Task HandleStudentUsernameInputAsync(long teacherId, long chatId, string input, CancellationToken ct)
     {
         var username = input.TrimStart('@').Trim();
-        var student  = await Db.GetUserByUsernameAsync(username);
+        var student = await Db.GetUserByUsernameAsync(username);
 
         ResetState(teacherId);
 
         if (student is not null && student.Role == "Student")
         {
-            // Student already activated — link directly
             await Db.LinkTeacherStudentAsync(teacherId, student.TelegramId);
-            await Bot.SendMessage(chatId,
+            await Bot.SendMessage(
+                chatId,
                 $"✅ *{WordFormatter.EscapeMarkdown(student.DisplayName)}* added to your list!",
-                parseMode: ParseMode.Markdown, cancellationToken: ct);
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
+        }
+        else if (student is not null && student.Role == "Teacher")
+        {
+            await Bot.SendMessage(
+                chatId,
+                $"❌ @{WordFormatter.EscapeMarkdown(username)} is registered as a teacher, not a student.",
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
         }
         else
         {
-            // Student hasn't started the bot yet — save a pending invitation
             await Db.AddPendingInvitationAsync(teacherId, username);
-            await Bot.SendMessage(chatId,
-                $"⏳ @{WordFormatter.EscapeMarkdown(username)} hasn't started the bot yet.\n" +
-                "They are added as *awaiting activation* and will be linked automatically when they join.",
-                parseMode: ParseMode.Markdown, cancellationToken: ct);
+            await Bot.SendMessage(
+                chatId,
+                $"⏳ @{WordFormatter.EscapeMarkdown(username)} hasn't started the bot yet.\nThey are added as *awaiting activation* and will be linked automatically when they join.",
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
         }
 
         await SendMenuAsync(chatId, "Teacher", ct);
@@ -104,7 +113,7 @@ public sealed class RegistrationHandler : HandlerBase
         });
 
         ResetState(userId);
-        await SendMenuAsync(chatId, role, ct);
+        await SendMenuAsync(chatId, userId, role, ct);
     }
 
     private async Task RegisterStudentAsync(long userId, TelegramUser from, long chatId, CancellationToken ct)
@@ -112,17 +121,18 @@ public sealed class RegistrationHandler : HandlerBase
         await Db.UpsertUserAsync(new User
         {
             TelegramId = userId,
-            Username   = from.Username ?? string.Empty,
-            FirstName  = from.FirstName,
-            Role       = "Student"
+            Username = from.Username ?? string.Empty,
+            FirstName = from.FirstName,
+            Role = "Student"
         });
 
-        // Auto-link to any teacher who added this student before they joined
         if (!string.IsNullOrEmpty(from.Username))
+        {
             await Db.ClaimPendingInvitationsAsync(userId, from.Username);
+        }
 
         ResetState(userId);
-        await SendMenuAsync(chatId, "Student", ct);
+        await SendMenuAsync(chatId, userId, "Student", ct);
     }
 
     private async Task HandleSetNameCallbackAsync(long userId, long chatId, CancellationToken ct)

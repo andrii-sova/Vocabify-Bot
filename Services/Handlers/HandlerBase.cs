@@ -1,22 +1,16 @@
+using Telegram.Bot;
+using Telegram.Bot.Types.ReplyMarkups;
 using VocabifyBot.Interfaces;
 using VocabifyBot.Models;
 using VocabifyBot.UI;
-using Telegram.Bot;
 
 namespace VocabifyBot.Services.Handlers;
 
-public abstract class HandlerBase
+public abstract class HandlerBase(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
 {
-    protected readonly ITelegramBotClient Bot;
-    protected readonly IDatabaseService Db;
-    protected readonly ConversationStateManager States;
-
-    protected HandlerBase(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
-    {
-        Bot = bot;
-        Db = db;
-        States = states;
-    }
+    protected ITelegramBotClient Bot { get; } = bot;
+    protected IDatabaseService Db { get; } = db;
+    protected ConversationStateManager States { get; } = states;
 
     protected ConversationState GetState(long userId) => States.Get(userId);
 
@@ -28,27 +22,31 @@ public abstract class HandlerBase
 
     protected async Task SendMenuAsync(long chatId, long userId, string role, CancellationToken ct)
     {
-        if (role == "Student" && !await Db.IsStudentLinkedToAnyTeacherAsync(userId))
+        if (role == "Student")
         {
-            await Bot.SendMessage(chatId,
-                "🔒 You haven't been added to a teacher's group yet.\n\n" +
-                "Please ask your teacher to add you by your Telegram username.",
-                cancellationToken: ct);
-            return;
+            var student = await Db.GetUserAsync(userId);
+            if (student is not null && !student.IsActivated)
+            {
+                await Bot.SendMessage(
+                    chatId,
+                    "🔒 You haven't been added to a teacher's group yet.\n\nPlease ask your teacher to add you by your Telegram username.",
+                    cancellationToken: ct);
+                return;
+            }
         }
 
         await Bot.SendMessage(
             chatId,
             role == "Teacher" ? "👨‍🏫 Teacher Menu" : "📚 Student Menu",
-            replyMarkup: role == "Teacher" ? Keyboards.TeacherMenu() : Keyboards.StudentMenu(),
+            replyMarkup: GetMenuMarkup(role),
             cancellationToken: ct);
     }
 
-    protected async Task SendMenuAsync(long chatId, string role, CancellationToken ct) =>
-        await Bot.SendMessage(
+    protected Task SendMenuAsync(long chatId, string role, CancellationToken ct) =>
+        Bot.SendMessage(
             chatId,
             role == "Teacher" ? "👨‍🏫 Teacher Menu" : "📚 Student Menu",
-            replyMarkup: role == "Teacher" ? Keyboards.TeacherMenu() : Keyboards.StudentMenu(),
+            replyMarkup: GetMenuMarkup(role),
             cancellationToken: ct);
 
     protected async Task GoMenuAsync(long userId, long chatId, CancellationToken ct)
@@ -56,4 +54,7 @@ public abstract class HandlerBase
         var user = await Db.GetUserAsync(userId);
         await SendMenuAsync(chatId, userId, user?.Role ?? "Student", ct);
     }
+
+    private static InlineKeyboardMarkup GetMenuMarkup(string role) =>
+        role == "Teacher" ? Keyboards.TeacherMenu() : Keyboards.StudentMenu();
 }

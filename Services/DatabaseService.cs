@@ -5,16 +5,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace VocabifyBot.Services;
 
-public class DatabaseService : IDatabaseService
+public sealed class DatabaseService(DbContextOptions<EnglishBotDbContext> options) : IDatabaseService
 {
-    private readonly DbContextOptions<EnglishBotDbContext> _options;
-
-    public DatabaseService(DbContextOptions<EnglishBotDbContext> options)
-    {
-        _options = options;
-    }
-
-    private EnglishBotDbContext Ctx() => new EnglishBotDbContext(_options);
+    private EnglishBotDbContext Ctx() => new(options);
 
     public async Task InitializeAsync()
     {
@@ -53,7 +46,7 @@ public class DatabaseService : IDatabaseService
         var existing = await ctx.Users.FindAsync(user.TelegramId);
         if (existing is null)
         {
-            user.CreatedAt = DateTime.Now;
+            user.CreatedAt = DateTime.UtcNow;
             ctx.Users.Add(user);
         }
         else
@@ -136,7 +129,7 @@ public class DatabaseService : IDatabaseService
             {
                 TeacherId       = teacherId,
                 StudentUsername = clean,
-                CreatedAt       = DateTime.Now
+                CreatedAt       = DateTime.UtcNow
             });
             await ctx.SaveChangesAsync();
         }
@@ -204,7 +197,7 @@ public class DatabaseService : IDatabaseService
     public async Task SaveWordsAsync(IEnumerable<Word> words)
     {
         await using var ctx = Ctx();
-        var batch = DateTime.Now;
+        var batch = DateTime.UtcNow;
         foreach (var w in words)
         {
             w.CreatedAt = batch;
@@ -377,14 +370,14 @@ public class DatabaseService : IDatabaseService
                 StudentId    = studentId,
                 CorrectCount = isCorrect ? 1 : 0,
                 WrongCount   = isCorrect ? 0 : 1,
-                LastSeenAt   = DateTime.Now
+                LastSeenAt   = DateTime.UtcNow
             });
         }
         else
         {
             if (isCorrect) stat.CorrectCount++;
             else           stat.WrongCount++;
-            stat.LastSeenAt = DateTime.Now;
+            stat.LastSeenAt = DateTime.UtcNow;
         }
         await ctx.SaveChangesAsync();
     }
@@ -406,9 +399,10 @@ public class DatabaseService : IDatabaseService
         var wordIds = topStats.Select(s => s.WordId).ToHashSet();
         var words   = await ctx.Words.Where(w => wordIds.Contains(w.Id)).ToListAsync();
 
-        // Preserve the error-count order
+        // Preserve the error-count order with O(1) lookup
+        var wordDict = words.ToDictionary(w => w.Id);
         return topStats
-            .Select(s => words.FirstOrDefault(w => w.Id == s.WordId))
+            .Select(s => wordDict.GetValueOrDefault(s.WordId))
             .OfType<Word>()
             .ToList();
     }

@@ -17,7 +17,8 @@ public static class WordFormatter
             return string.Empty;
         }
 
-        return Regex.Replace(text, @"([_\*\[\]\(\)~`>#\+\-=\|\{\}\.\!])", @"\\$1");
+        // ParseMode.Markdown (V1) only treats _  *  `  [  \ as special
+        return Regex.Replace(text, @"([_\*`\[\\])", @"\$1");
     }
 
     public static string Truncate(string s, int maxLength)

@@ -24,7 +24,7 @@ public class EnglishBotDbContext : DbContext
             b.Property(u => u.DisplayNameOverride).HasMaxLength(60);
             b.Property(u => u.Role).HasMaxLength(20).IsRequired();
             b.Property(u => u.IsActivated).HasDefaultValue(false);
-            b.Property(u => u.CreatedAt).HasDefaultValueSql("GETDATE()");
+            b.Property(u => u.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
             b.Ignore(u => u.DisplayName);
         });
 
@@ -51,7 +51,7 @@ public class EnglishBotDbContext : DbContext
             b.Property(w => w.Topic).HasMaxLength(60);
             b.Property(w => w.EnglishLevel).HasMaxLength(2);
             b.Property(w => w.BatchId);
-            b.Property(w => w.CreatedAt).HasDefaultValueSql("GETDATE()");
+            b.Property(w => w.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
 
             b.HasOne(w => w.AddedBy)
              .WithMany(u => u.WordsSent)
@@ -85,7 +85,7 @@ public class EnglishBotDbContext : DbContext
             b.HasKey(p => p.Id);
             b.HasIndex(p => new { p.TeacherId, p.StudentUsername }).IsUnique();
             b.Property(p => p.StudentUsername).HasMaxLength(255).IsRequired();
-            b.Property(p => p.CreatedAt).HasDefaultValueSql("GETDATE()");
+            b.Property(p => p.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
 
             b.HasOne(p => p.Teacher)
              .WithMany()
