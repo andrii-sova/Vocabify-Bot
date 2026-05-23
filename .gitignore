@@ -3,15 +3,19 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Secrets / local configuration — never commit real credentials
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+*.env
+
 # User-specific files
 *.rsuser
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
-*.env
 
-# User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
 # Mono auto generated files

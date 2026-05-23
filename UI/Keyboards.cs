@@ -1,0 +1,228 @@
+using VocabifyBot.Models;
+using Telegram.Bot.Types.ReplyMarkups;
+
+namespace VocabifyBot.UI;
+
+public static class Keyboards
+{
+    public static InlineKeyboardMarkup TeacherMenu() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("👤 Add Student", "menu_add_student"),
+            InlineKeyboardButton.WithCallbackData("📤 Send Words", "menu_send_words")
+        },
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("👥 My Students", "menu_my_students"),
+            InlineKeyboardButton.WithCallbackData("📋 Words Sent", "menu_words_sent")
+        },
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("🗑 Remove Student", "menu_remove_student"),
+            InlineKeyboardButton.WithCallbackData("✏️ My Name", "menu_set_name")
+        }
+    });
+
+    public static InlineKeyboardMarkup StudentMenu() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("📝 Add My Words", "menu_add_words"),
+            InlineKeyboardButton.WithCallbackData("📚 My Vocabulary", "menu_my_words")
+        },
+        new[] { InlineKeyboardButton.WithCallbackData("🧩 Quiz", "menu_quiz") },
+        new[] { InlineKeyboardButton.WithCallbackData("✏️ My Name", "menu_set_name") }
+    });
+
+    public static InlineKeyboardMarkup RoleSelection() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("👨‍🏫 Teacher", "role_teacher"),
+            InlineKeyboardButton.WithCallbackData("📚 Student", "role_student")
+        }
+    });
+
+    public static InlineKeyboardMarkup BackButton(string callbackData) => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", callbackData) }
+    });
+
+    public static InlineKeyboardMarkup TopicChoice() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("🤖 Auto-detect", "topic_auto"),
+            InlineKeyboardButton.WithCallbackData("✏️ Specify", "topic_specify"),
+            InlineKeyboardButton.WithCallbackData("⏭ Skip", "topic_skip")
+        }
+    });
+
+    public static InlineKeyboardMarkup StudentList(IEnumerable<User> students, string callbackPrefix) => new(
+        students
+            .Select(student => new[]
+            {
+                InlineKeyboardButton.WithCallbackData(student.DisplayName, $"{callbackPrefix}{student.TelegramId}")
+            })
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "back_to_menu") })
+            .ToArray());
+
+    public static InlineKeyboardMarkup CefrLevelButtons(string callbackPrefix)
+    {
+        var buttons = WordFormatter.CefrLevels
+            .Select(level => InlineKeyboardButton.WithCallbackData(level, $"{callbackPrefix}{level}"))
+            .ToArray();
+
+        var cancelCallback = callbackPrefix switch
+        {
+            "pool_level_" => "pool_cancel",
+            _ => "quiz_cancel"
+        };
+
+        return new InlineKeyboardMarkup(new[]
+        {
+            buttons[..4],
+            buttons[4..],
+            new[] { InlineKeyboardButton.WithCallbackData("🔀 Any", $"{callbackPrefix}any") },
+            new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", cancelCallback) }
+        });
+    }
+
+    public static InlineKeyboardMarkup SendWordChoice() => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData("✍️ Type Words", "type_words") },
+        new[] { InlineKeyboardButton.WithCallbackData("🎯 Assign from Pool", "pool_start") },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "back_from_send_words") }
+    });
+
+    public static InlineKeyboardMarkup PoolCountButtons() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("5", "pool_count_5"),
+            InlineKeyboardButton.WithCallbackData("10", "pool_count_10"),
+            InlineKeyboardButton.WithCallbackData("20", "pool_count_20"),
+            InlineKeyboardButton.WithCallbackData("30", "pool_count_30")
+        },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "pool_start") }
+    });
+
+    public static InlineKeyboardMarkup PoolPreviewButtons() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("✅ Confirm", "pool_confirm"),
+            InlineKeyboardButton.WithCallbackData("🔄 Shuffle", "pool_shuffle"),
+            InlineKeyboardButton.WithCallbackData("❌ Cancel", "pool_cancel")
+        }
+    });
+
+    public static InlineKeyboardMarkup WordFilterSelection() => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData("👨‍🏫 Sent by me", "wfilter_teacher") },
+        new[] { InlineKeyboardButton.WithCallbackData("🧑 Stored by student", "wfilter_student") },
+        new[] { InlineKeyboardButton.WithCallbackData("📋 Both", "wfilter_both") },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "back_to_menu") }
+    });
+
+    public static InlineKeyboardMarkup WordModeSelection() => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData("🏷️ By topic", "wmode_topic") },
+        new[] { InlineKeyboardButton.WithCallbackData("📦 By chunks of 20", "wmode_chunks") },
+        new[] { InlineKeyboardButton.WithCallbackData("💬 By messages", "wmode_messages") },
+        new[] { InlineKeyboardButton.WithCallbackData("📋 All at once", "wmode_all") },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "back_to_menu") }
+    });
+
+    public static InlineKeyboardMarkup BrowseNavigation(bool hasMore) => new(new[]
+    {
+        new[]
+        {
+            hasMore
+                ? InlineKeyboardButton.WithCallbackData("▶️ Next chunk", "browse_next")
+                : InlineKeyboardButton.WithCallbackData("✅ Done", "browse_cancel"),
+            InlineKeyboardButton.WithCallbackData("❌ Cancel", "browse_cancel")
+        }
+    });
+
+    public static InlineKeyboardMarkup ConfirmRemoveStudent(long studentId) => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("✅ Yes, remove", $"confirm_remove_{studentId}"),
+            InlineKeyboardButton.WithCallbackData("❌ Cancel", "back_to_menu")
+        }
+    });
+
+    public static InlineKeyboardMarkup QuizDirectionSelection() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("🇬🇧 → 🇺🇦  Eng → Ukr", "quiz_dir_eu"),
+            InlineKeyboardButton.WithCallbackData("🇺🇦 → 🇬🇧  Ukr → Eng", "quiz_dir_ue")
+        },
+        new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", "quiz_cancel") }
+    });
+
+    public static InlineKeyboardMarkup QuizAmountSelection() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("5", "quiz_amt_5"),
+            InlineKeyboardButton.WithCallbackData("10", "quiz_amt_10"),
+            InlineKeyboardButton.WithCallbackData("20", "quiz_amt_20"),
+            InlineKeyboardButton.WithCallbackData("30", "quiz_amt_30")
+        },
+        new[] { InlineKeyboardButton.WithCallbackData("✏️ Custom", "quiz_amt_custom") },
+        new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", "quiz_cancel") }
+    });
+
+    public static InlineKeyboardMarkup QuizTopicButtons(IReadOnlyList<string> topics) => new(
+        topics
+            .Select((topic, index) => new[]
+            {
+                InlineKeyboardButton.WithCallbackData($"🏷️ {topic}", $"quiz_top_{index}")
+            })
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("🔀 Any topic", "quiz_top_any") })
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", "quiz_cancel") })
+            .ToArray());
+
+    public static InlineKeyboardMarkup QuizAnswerGrid(int qIdx, IReadOnlyList<Word> options, string direction)
+    {
+        var rows = new List<InlineKeyboardButton[]>();
+        var buttons = options
+            .Select(option => InlineKeyboardButton.WithCallbackData(
+                WordFormatter.Truncate(WordFormatter.QuizAnswer(option, direction), 32),
+                $"quiz_ans_{qIdx}_{option.Id}"))
+            .ToList();
+
+        for (var i = 0; i < buttons.Count; i += 2)
+        {
+            rows.Add(buttons.Skip(i).Take(2).ToArray());
+        }
+
+        rows.Add(new[] { InlineKeyboardButton.WithCallbackData("🚫 Stop Quiz", "quiz_cancel") });
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    public static InlineKeyboardMarkup VocabTopicButtons(IReadOnlyList<string> topics) => new(
+        topics
+            .Select((topic, index) => new[]
+            {
+                InlineKeyboardButton.WithCallbackData($"🏷️ {topic}", $"vocab_t_{index}")
+            })
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") })
+            .ToArray());
+
+    public static InlineKeyboardMarkup PoolEmptyState() => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData("🔙 Change level", "pool_start") },
+        new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", "pool_cancel") }
+    });
+
+    public static InlineKeyboardMarkup SingleAction(string text, string callbackData) => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData(text, callbackData) }
+    });
+}
