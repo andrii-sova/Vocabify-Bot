@@ -39,11 +39,15 @@ public sealed class StudentHandler : HandlerBase
             case "vocab_all":
                 await SendWordListAsync(chatId, await Db.GetWordsForStudentAsync(userId), "📚 Your vocabulary:", ct);
                 break;
+            case "vocab_level":
+                await Bot.SendMessage(chatId, "🔤 Select a CEFR level:",
+                    replyMarkup: Keyboards.VocabLevelButtons(), cancellationToken: ct);
+                break;
             default:
                 if (data.StartsWith("vocab_t_"))
-                {
                     await ShowWordsByTopicAsync(userId, chatId, data, ct);
-                }
+                else if (data.StartsWith("vocab_lvl_"))
+                    await ShowWordsByLevelAsync(userId, chatId, data["vocab_lvl_".Length..], ct);
                 break;
         }
     }
@@ -85,12 +89,26 @@ public sealed class StudentHandler : HandlerBase
                 return;
             }
 
-            await SendWordListAsync(chatId, words, "📚 Your vocabulary:", ct);
+            // No topics but there are words — still offer level filter + all
+            await Bot.SendMessage(chatId, "📚 Browse your vocabulary:",
+                replyMarkup: new Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup(new[]
+                {
+                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("🔤 By Level",  "vocab_level") },
+                    new[] { Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") }
+                }),
+                cancellationToken: ct);
             return;
         }
 
         MutateState(userId, state => state.CachedTopics = topics);
-        await Bot.SendMessage(chatId, "📚 Browse vocabulary by topic:", replyMarkup: Keyboards.VocabTopicButtons(topics), cancellationToken: ct);
+        await Bot.SendMessage(chatId, "📚 Browse vocabulary by topic:",
+            replyMarkup: Keyboards.VocabTopicButtons(topics), cancellationToken: ct);
+    }
+
+    private async Task ShowWordsByLevelAsync(long userId, long chatId, string level, CancellationToken ct)
+    {
+        var words = await Db.GetWordsByLevelAsync(userId, level);
+        await SendWordListAsync(chatId, words, $"🔤 *{WordFormatter.EscapeMarkdown(level)}* words:", ct);
     }
 
     private async Task ShowWordsByTopicAsync(long userId, long chatId, string data, CancellationToken ct)

@@ -26,5 +26,6 @@ public interface IDatabaseService
     Task RecordQuizAnswerAsync(long studentId, int wordId, bool isCorrect);
     Task<List<string>> GetTopicsForStudentAsync(long studentId);
     Task<List<Word>> GetWordsByTopicAsync(long studentId, string topic, int top = 50);
+    Task<List<Word>> GetWordsByLevelAsync(long studentId, string level, int top = 50);
     Task<List<Word>> SearchWordsAsync(long studentId, string query, int maxResults = 15);
 }

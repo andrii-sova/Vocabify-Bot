@@ -387,6 +387,17 @@ public class DatabaseService : IDatabaseService
             .ToListAsync();
     }
 
+    /// <summary>Words for a student filtered by CEFR level.</summary>
+    public async Task<List<Word>> GetWordsByLevelAsync(long studentId, string level, int top = 50)
+    {
+        await using var ctx = Ctx();
+        return await ctx.Words
+            .Where(w => w.ForStudentId == studentId && w.EnglishLevel == level)
+            .OrderBy(w => w.CreatedAt)
+            .Take(top)
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Fuzzy word search using a two-pass strategy:
     ///   1. SQL-side pre-filter with LIKE for substring matches (fast index scan).

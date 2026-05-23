@@ -228,7 +228,17 @@ public static class Keyboards
             {
                 InlineKeyboardButton.WithCallbackData($"🏷️ {topic}", $"vocab_t_{index}")
             })
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("🔤 By Level",  "vocab_level") })
             .Append(new[] { InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") })
+            .ToArray());
+
+    public static InlineKeyboardMarkup VocabLevelButtons() => new(
+        WordFormatter.CefrLevels
+            .Select(level => InlineKeyboardButton.WithCallbackData(level, $"vocab_lvl_{level}"))
+            .ToArray()
+            .Chunk(4)
+            .Select(row => row)
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "menu_my_words") })
             .ToArray());
 
     public static InlineKeyboardMarkup PoolEmptyState() => new(new[]

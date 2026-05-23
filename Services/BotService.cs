@@ -394,6 +394,26 @@ public class BotService
             var words = await _db.GetWordsForStudentAsync(userId);
             await SendWordListAsync(chatId, words, "📚 All vocabulary:", ct);
         }
+        else if (data == "vocab_level")
+        {
+            string[] cefrLevels = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"];
+            await _bot.SendMessage(chatId, "🔤 Select a CEFR level:",
+                replyMarkup: new InlineKeyboardMarkup(
+                    cefrLevels
+                        .Select(l => InlineKeyboardButton.WithCallbackData(l, $"vocab_lvl_{l}"))
+                        .ToArray()
+                        .Chunk(4)
+                        .Select(row => row)
+                        .Append(new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "menu_my_words") })
+                        .ToArray()),
+                cancellationToken: ct);
+        }
+        else if (data.StartsWith("vocab_lvl_"))
+        {
+            var level = data["vocab_lvl_".Length..];
+            var words = await _db.GetWordsByLevelAsync(userId, level);
+            await SendWordListAsync(chatId, words, $"🔤 *{level}* words:", ct);
+        }
         else if (data.StartsWith("vocab_t_"))
         {
             var state = GetState(userId);
@@ -1068,7 +1088,14 @@ public class BotService
         {
             var words = await _db.GetWordsForStudentAsync(studentId);
             if (words.Count == 0) { await _bot.SendMessage(chatId, "Your vocabulary is empty. 📭", cancellationToken: ct); return; }
-            await SendWordListAsync(chatId, words, "📚 Your vocabulary:", ct);
+
+            await _bot.SendMessage(chatId, "📚 Browse your vocabulary:",
+                replyMarkup: new InlineKeyboardMarkup(new[]
+                {
+                    new[] { InlineKeyboardButton.WithCallbackData("🔤 By Level",  "vocab_level") },
+                    new[] { InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") }
+                }),
+                cancellationToken: ct);
             return;
         }
 
@@ -1079,6 +1106,7 @@ public class BotService
 
         var rows = topics
             .Select((t, i) => new[] { InlineKeyboardButton.WithCallbackData($"🏷️ {t}", $"vocab_t_{i}") })
+            .Append(new[] { InlineKeyboardButton.WithCallbackData("🔤 By Level",  "vocab_level") })
             .Append(new[] { InlineKeyboardButton.WithCallbackData("📋 All Words", "vocab_all") })
             .ToArray();
 
