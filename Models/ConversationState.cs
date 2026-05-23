@@ -17,7 +17,8 @@ public enum UserState
     AwaitingTopicChoice,
     AwaitingTopicName,
     AwaitingQuizCustomAmount,
-    AwaitingSearchQuery
+    AwaitingSearchQuery,
+    AwaitingGenTopic
 }
 
 public class ConversationState
@@ -57,4 +58,10 @@ public class ConversationState
     public List<List<Word>> BrowsingGroups    { get; set; } = new(); // grouped (topic / message)
     public int              BrowsingGroupIdx  { get; set; } = 0;     // current group pointer
     public int              BrowsingOffset    { get; set; } = 0;     // chunk offset
+
+    // Generate by Level (AI) state
+    public string?                GenLevel   { get; set; }  // e.g. "B2"
+    public int                    GenCount   { get; set; }  // 5 | 10 | 20 | 30
+    public string?                GenTopic   { get; set; }  // optional topic hint
+    public List<PendingWordEntry> GenPreview { get; set; } = new();
 }

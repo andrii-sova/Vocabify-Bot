@@ -85,4 +85,42 @@ public static class WordFormatter
             };
         }).ToList();
     }
+
+    /// <summary>
+    /// Parses AI-generated lines that already contain the English phrase embedded:
+    /// "[B2] put you off — відбити бажання [пут ю оф] (…)"
+    /// Original  = "put you off"
+    /// Translation = "put you off — відбити бажання [пут ю оф] (…)"
+    /// EnglishLevel = "B2"
+    /// </summary>
+    public static List<PendingWordEntry> BuildPendingWordsFromGeneration(string generationText)
+    {
+        var lines = generationText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var result = new List<PendingWordEntry>();
+
+        foreach (var line in lines)
+        {
+            var match = CefrPrefix.Match(line);
+            if (!match.Success) continue;
+
+            var rest  = line[match.Length..];                       // everything after "[B2] "
+            var dash  = rest.IndexOf('—');
+            var original = dash >= 0 ? rest[..dash].Trim() : rest.Trim();
+
+            result.Add(new PendingWordEntry
+            {
+                Original     = original,
+                Translation  = rest,                                // full line minus the [LEVEL] prefix
+                EnglishLevel = match.Groups[1].Value
+            });
+        }
+        return result;
+    }
+
+    /// <summary>Formats a PendingWordEntry for preview display (before saving).</summary>
+    public static string FormatPendingLine(PendingWordEntry p)
+    {
+        var level = p.EnglishLevel is not null ? $"*[{p.EnglishLevel}]* " : string.Empty;
+        return $"{level}{EscapeMarkdown(p.Translation)}";
+    }
 }

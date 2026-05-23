@@ -50,4 +50,38 @@ Example output:
         );
         return result.Value.Content[0].Text.Trim();
     }
+
+    public async Task<string> GenerateWordsByLevelAsync(
+        string level, int count, string? topic, IEnumerable<string> existingWords)
+    {
+        var topicClause = string.IsNullOrWhiteSpace(topic)
+            ? string.Empty
+            : $"\nFocus the vocabulary on the topic: {topic}.";
+
+        var excludeList = string.Join(", ", existingWords.Take(200));
+        var excludeClause = string.IsNullOrWhiteSpace(excludeList)
+            ? string.Empty
+            : $"\nDo NOT use any of these words the student already knows: {excludeList}.";
+
+        var systemPrompt =
+            $@"You are an English vocabulary generator for Ukrainian learners.
+Generate exactly {count} English words or phrases at CEFR level {level}.{topicClause}
+
+For each entry output a SINGLE line in EXACTLY this format:
+[{level}] english phrase — Ukrainian translation, synonyms; також: secondary meaning [Ukrainian Cyrillic pronunciation] (Example sentence — Ukrainian translation)
+
+Rules:
+- One entry per line, no blank lines between entries
+- Every line must start with [{level}]
+- Pronunciation MUST be in square brackets [] using ONLY Ukrainian Cyrillic letters
+- Include 1–2 short example sentences with Ukrainian translation in parentheses
+- Choose natural, useful everyday words a learner at {level} would need{excludeClause}
+- Output ONLY the word entries, no headers, numbers or extra text";
+
+        var result = await _chat.CompleteChatAsync(
+            new SystemChatMessage(systemPrompt),
+            new UserChatMessage($"Generate {count} {level} words.")
+        );
+        return result.Value.Content[0].Text.Trim();
+    }
 }

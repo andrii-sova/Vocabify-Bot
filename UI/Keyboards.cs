@@ -95,6 +95,7 @@ public static class Keyboards
         var cancelCallback = callbackPrefix switch
         {
             "pool_level_" => "pool_cancel",
+            "gen_level_"  => "gen_cancel",
             _ => "quiz_cancel"
         };
 
@@ -109,9 +110,38 @@ public static class Keyboards
 
     public static InlineKeyboardMarkup SendWordChoice() => new(new[]
     {
-        new[] { InlineKeyboardButton.WithCallbackData("✍️ Type Words",       "type_words") },
-        new[] { InlineKeyboardButton.WithCallbackData("🎯 Assign from Pool", "pool_start") },
-        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back",             "back_from_send_words") }
+        new[] { InlineKeyboardButton.WithCallbackData("✍️ Type Words",        "type_words") },
+        new[] { InlineKeyboardButton.WithCallbackData("🎯 Assign from Pool",  "pool_start") },
+        new[] { InlineKeyboardButton.WithCallbackData("🤖 Generate by Level", "gen_start") },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back",              "back_from_send_words") }
+    });
+
+    public static InlineKeyboardMarkup GenCountButtons() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("5",  "gen_count_5"),
+            InlineKeyboardButton.WithCallbackData("10", "gen_count_10"),
+            InlineKeyboardButton.WithCallbackData("20", "gen_count_20"),
+            InlineKeyboardButton.WithCallbackData("30", "gen_count_30")
+        },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "gen_start") }
+    });
+
+    public static InlineKeyboardMarkup GenTopicPromptButtons() => new(new[]
+    {
+        new[] { InlineKeyboardButton.WithCallbackData("⏭ Skip topic", "gen_topic_skip") },
+        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back",       "gen_start") }
+    });
+
+    public static InlineKeyboardMarkup GenPreviewButtons() => new(new[]
+    {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("✅ Confirm",     "gen_confirm"),
+            InlineKeyboardButton.WithCallbackData("🔄 Regenerate", "gen_retry"),
+            InlineKeyboardButton.WithCallbackData("⬅️ Back",        "gen_start")
+        }
     });
 
     public static InlineKeyboardMarkup PoolCountButtons() => new(new[]

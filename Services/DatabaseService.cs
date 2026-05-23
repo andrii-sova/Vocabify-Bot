@@ -398,6 +398,17 @@ public class DatabaseService : IDatabaseService
             .ToListAsync();
     }
 
+    /// <summary>Returns every original English word the student already has (no limit) — used to exclude duplicates from AI generation.</summary>
+    public async Task<List<string>> GetAllWordOriginalsAsync(long studentId)
+    {
+        await using var ctx = Ctx();
+        return await ctx.Words
+            .Where(w => w.ForStudentId == studentId)
+            .Select(w => w.OriginalWord)
+            .Distinct()
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Fuzzy word search using a two-pass strategy:
     ///   1. SQL-side pre-filter with LIKE for substring matches (fast index scan).

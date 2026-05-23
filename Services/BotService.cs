@@ -87,6 +87,8 @@ public class BotService
                 await HandleQuizCustomAmountAsync(userId, chatId, text, ct);         break;
             case UserState.AwaitingSearchQuery:
                 await HandleSearchQueryAsync(userId, chatId, text, ct);              break;
+            case UserState.AwaitingGenTopic:
+                await HandleGenTopicInputAsync(userId, chatId, text, ct);            break;
             default:
                 var user = await _db.GetUserAsync(userId);
                 if (user is not null) await SendMainMenuAsync(chatId, user.Role, ct);
@@ -261,6 +263,86 @@ public class BotService
 
         // ── Assign from Pool: cancel ──────────────────────────────────────────
         else if (data == "pool_cancel")
+        {
+            ResetState(userId);
+            await SendMainMenuAsync(chatId, "Teacher", ct);
+        }
+
+        // ── Generate by Level: start → level selection ────────────────────────
+        else if (data == "gen_start")
+        {
+            var state = GetState(userId);
+            if (state.SelectedStudentId is null) { await GoMenu(userId, chatId, ct); return; }
+            MutateState(userId, s => { s.GenLevel = null; s.GenTopic = null; s.GenPreview = new(); });
+            await _bot.SendMessage(chatId,
+                "🤖 *Generate by Level*\n\nSelect the CEFR level for the new words:",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: BuildCefrKeyboard("gen_level_", "gen_cancel"),
+                cancellationToken: ct);
+        }
+
+        // ── Generate by Level: level chosen → count selection ─────────────────
+        else if (data.StartsWith("gen_level_"))
+        {
+            var level = data["gen_level_".Length..];
+            MutateState(userId, s => s.GenLevel = level);
+            await _bot.SendMessage(chatId,
+                $"📦 How many *{level}* words would you like to generate?",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: new InlineKeyboardMarkup(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("5",  "gen_count_5"),
+                        InlineKeyboardButton.WithCallbackData("10", "gen_count_10"),
+                        InlineKeyboardButton.WithCallbackData("20", "gen_count_20"),
+                        InlineKeyboardButton.WithCallbackData("30", "gen_count_30")
+                    },
+                    new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back", "gen_start") }
+                }),
+                cancellationToken: ct);
+        }
+
+        // ── Generate by Level: count chosen → topic prompt ────────────────────
+        else if (data.StartsWith("gen_count_"))
+        {
+            MutateState(userId, s => s.GenCount = int.Parse(data["gen_count_".Length..]));
+            var state = GetState(userId);
+            SetState(userId, new ConversationState
+            {
+                State             = UserState.AwaitingGenTopic,
+                SelectedStudentId = state.SelectedStudentId,
+                GenLevel          = state.GenLevel,
+                GenCount          = state.GenCount
+            });
+            await _bot.SendMessage(chatId,
+                $"🏷️ Enter a topic for the *{state.GenLevel}* words _(optional)_:\n\n_e.g. Business English, Travel, Phrasal Verbs_",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: new InlineKeyboardMarkup(new[]
+                {
+                    new[] { InlineKeyboardButton.WithCallbackData("⏭ Skip topic", "gen_topic_skip") },
+                    new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back",       "gen_start") }
+                }),
+                cancellationToken: ct);
+        }
+
+        // ── Generate by Level: skip topic → generate ──────────────────────────
+        else if (data == "gen_topic_skip")
+        {
+            MutateState(userId, s => { s.GenTopic = null; s.State = UserState.None; });
+            await GenerateAndShowPreviewAsync(userId, chatId, ct);
+        }
+
+        // ── Generate by Level: regenerate (same params) ───────────────────────
+        else if (data == "gen_retry")
+            await GenerateAndShowPreviewAsync(userId, chatId, ct);
+
+        // ── Generate by Level: confirm → save ────────────────────────────────
+        else if (data == "gen_confirm")
+            await ConfirmGenPreviewAsync(userId, chatId, ct);
+
+        // ── Generate by Level: cancel ─────────────────────────────────────────
+        else if (data == "gen_cancel")
         {
             ResetState(userId);
             await SendMainMenuAsync(chatId, "Teacher", ct);
@@ -1474,6 +1556,123 @@ public class BotService
         return $"*{EscapeMd(w.OriginalWord)}*{level} — {w.Translation}{topic}";
     }
 
+    // ── Generate by Level ──────────────────────────────────────────────────────
+
+    private async Task HandleGenTopicInputAsync(long userId, long chatId, string topic, CancellationToken ct)
+    {
+        MutateState(userId, s => { s.GenTopic = topic.Trim(); s.State = UserState.None; });
+        await GenerateAndShowPreviewAsync(userId, chatId, ct);
+    }
+
+    private async Task GenerateAndShowPreviewAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.SelectedStudentId is null || state.GenLevel is null) { await GoMenu(userId, chatId, ct); return; }
+
+        var notice = await _bot.SendMessage(chatId, "⏳ Generating words with AI…", cancellationToken: ct);
+        try
+        {
+            var existing  = await _db.GetAllWordOriginalsAsync(state.SelectedStudentId.Value);
+            var generated = await _openAi.GenerateWordsByLevelAsync(state.GenLevel, state.GenCount, state.GenTopic, existing);
+            var preview   = VocabifyBot.UI.WordFormatter.BuildPendingWordsFromGeneration(generated);
+
+            MutateState(userId, s => s.GenPreview = preview);
+
+            if (preview.Count == 0)
+            {
+                await _bot.SendMessage(chatId,
+                    "⚠️ AI couldn't generate words. Try regenerating or change the settings.",
+                    replyMarkup: new InlineKeyboardMarkup(new[]
+                    {
+                        new[] { InlineKeyboardButton.WithCallbackData("🔄 Regenerate", "gen_retry") },
+                        new[] { InlineKeyboardButton.WithCallbackData("⬅️ Back",        "gen_start") }
+                    }),
+                    cancellationToken: ct);
+                return;
+            }
+
+            var student    = await _db.GetUserAsync(state.SelectedStudentId.Value);
+            var topicNote  = state.GenTopic is not null ? $" · 🏷️ _{EscapeMd(state.GenTopic)}_" : string.Empty;
+            var header     = $"🤖 *{preview.Count} {state.GenLevel} words* for *{EscapeMd(student?.DisplayName ?? "")}*{topicNote}:";
+            var body       = string.Join("\n\n", preview.Select(p =>
+            {
+                var lvl = p.EnglishLevel is not null ? $"*[{p.EnglishLevel}]* " : string.Empty;
+                return $"{lvl}{EscapeMd(p.Translation)}";
+            }));
+
+            await _bot.SendMessage(chatId,
+                $"{header}\n\n{body}",
+                parseMode: ParseMode.Markdown,
+                replyMarkup: new InlineKeyboardMarkup(new[]
+                {
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("✅ Confirm",     "gen_confirm"),
+                        InlineKeyboardButton.WithCallbackData("🔄 Regenerate", "gen_retry"),
+                        InlineKeyboardButton.WithCallbackData("⬅️ Back",        "gen_start")
+                    }
+                }),
+                cancellationToken: ct);
+        }
+        finally
+        {
+            try { await _bot.DeleteMessage(chatId, notice.MessageId, cancellationToken: ct); } catch { }
+        }
+    }
+
+    private async Task ConfirmGenPreviewAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.SelectedStudentId is null || state.GenPreview.Count == 0) { await GoMenu(userId, chatId, ct); return; }
+
+        var batchId = Guid.NewGuid();
+        var words   = state.GenPreview.Select(p => new VocabifyBot.Models.Word
+        {
+            OriginalWord  = p.Original,
+            Translation   = p.Translation,
+            EnglishLevel  = p.EnglishLevel,
+            Topic         = state.GenTopic,
+            BatchId       = batchId,
+            AddedByUserId = userId,
+            ForStudentId  = state.SelectedStudentId.Value
+        }).ToList();
+
+        await _db.SaveWordsAsync(words);
+
+        var teacher = await _db.GetUserAsync(userId);
+        var student = await _db.GetUserAsync(state.SelectedStudentId.Value);
+
+        await _bot.SendMessage(chatId,
+            $"✅ *{words.Count}* {state.GenLevel} words saved for *{EscapeMd(student?.DisplayName ?? "")}*!",
+            parseMode: ParseMode.Markdown, cancellationToken: ct);
+
+        // Notify student
+        try
+        {
+            var body      = string.Join("\n\n", words.Select(w => $"*[{w.EnglishLevel}]* {EscapeMd(w.Translation)}"));
+            var topicNote = state.GenTopic is not null ? $" · {state.GenTopic}" : string.Empty;
+            await _bot.SendMessage(state.SelectedStudentId.Value,
+                $"📚 New *{state.GenLevel}* vocabulary from {EscapeMd(teacher?.DisplayName ?? "your teacher")}{topicNote}:\n\n{body}",
+                parseMode: ParseMode.Markdown, cancellationToken: ct);
+        }
+        catch { }
+
+        ResetState(userId);
+        await SendMainMenuAsync(chatId, "Teacher", ct);
+    }
+
+    /// <summary>Inline CEFR level keyboard used for Generate by Level (avoids dependency on Keyboards/WordFormatter).</summary>
+    private static InlineKeyboardMarkup BuildCefrKeyboard(string prefix, string cancelCallback)
+    {
+        string[] levels = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"];
+        return new InlineKeyboardMarkup(new[]
+        {
+            levels[..4].Select(l => InlineKeyboardButton.WithCallbackData(l, $"{prefix}{l}")).ToArray(),
+            levels[4..].Select(l => InlineKeyboardButton.WithCallbackData(l, $"{prefix}{l}")).ToArray(),
+            new[] { InlineKeyboardButton.WithCallbackData("❌ Cancel", cancelCallback) }
+        });
+    }
+
     private const int ChunkSize = 20;
 
     private ConversationState GetState(long userId) =>
@@ -1482,6 +1681,13 @@ public class BotService
     private void SetState(long userId, ConversationState state) => _states[userId] = state;
 
     private void ResetState(long userId) => _states[userId] = new ConversationState();
+
+    private void MutateState(long userId, Action<ConversationState> mutate)
+    {
+        var state = GetState(userId);
+        mutate(state);
+        _states[userId] = state;
+    }
 
     private static string EscapeMd(string text) =>
         text.Replace("_", "\\_").Replace("*", "\\*").Replace("[", "\\[").Replace("`", "\\`");
