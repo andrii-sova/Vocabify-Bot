@@ -140,7 +140,8 @@ public static class Keyboards
             InlineKeyboardButton.WithCallbackData("✅ Confirm",     "gen_confirm"),
             InlineKeyboardButton.WithCallbackData("🔄 Regenerate", "gen_retry"),
             InlineKeyboardButton.WithCallbackData("⬅️ Back",        "gen_start")
-        }
+        },
+        new[] { InlineKeyboardButton.WithCallbackData("✂️ Remove Words", "gen_remove") }
     });
 
     public static InlineKeyboardMarkup PoolCountButtons() => new(new[]

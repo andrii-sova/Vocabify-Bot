@@ -18,7 +18,8 @@ public enum UserState
     AwaitingTopicName,
     AwaitingQuizCustomAmount,
     AwaitingSearchQuery,
-    AwaitingGenTopic
+    AwaitingGenTopic,
+    AwaitingWordRemoval
 }
 
 public sealed class ConversationState

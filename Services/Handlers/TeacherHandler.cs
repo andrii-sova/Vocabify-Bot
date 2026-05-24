@@ -73,8 +73,8 @@ public sealed class TeacherHandler(
                 });
                 await GenerateAndShowPreviewAsync(userId, chatId, ct);
                 return;
-            case "gen_retry":
-                await GenerateAndShowPreviewAsync(userId, chatId, ct);
+            case "gen_remove":
+                await HandleGenRemoveAsync(userId, chatId, ct);
                 return;
             case "gen_confirm":
                 await ConfirmGenPreviewAsync(userId, chatId, ct);
@@ -567,6 +567,96 @@ public sealed class TeacherHandler(
             {
             }
         }
+    }
+
+    private async Task HandleGenRemoveAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.GenPreview.Count == 0)
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+
+        MutateState(userId, s => s.State = UserState.AwaitingWordRemoval);
+
+        var numbered = string.Join("\n", state.GenPreview.Select((w, i) =>
+        {
+            var level = w.EnglishLevel is not null ? $"*[{w.EnglishLevel}]* " : string.Empty;
+            return $"{i + 1}. {level}{WordFormatter.EscapeMarkdown(w.Translation)}";
+        }));
+
+        await Bot.SendMessage(
+            chatId,
+            $"✂️ *Remove words from preview*\n\n{numbered}\n\n_Enter the numbers to remove, separated by commas (e.g. `2, 4`):_",
+            parseMode: ParseMode.Markdown,
+            replyMarkup: Keyboards.BackButton("gen_retry"),
+            cancellationToken: ct);
+    }
+
+    public async Task HandleWordRemovalInputAsync(long userId, long chatId, string input, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        if (state.GenPreview.Count == 0)
+        {
+            await GoMenuAsync(userId, chatId, ct);
+            return;
+        }
+
+        var indices = input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => int.TryParse(s, out var n) ? n - 1 : -1)
+            .Where(i => i >= 0 && i < state.GenPreview.Count)
+            .ToHashSet();
+
+        if (indices.Count == 0)
+        {
+            await Bot.SendMessage(
+                chatId,
+                "⚠️ No valid numbers found. Please send numbers like `1, 3` matching the list above.",
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
+            return;
+        }
+
+        var updated = state.GenPreview.Where((_, i) => !indices.Contains(i)).ToList();
+        if (updated.Count == 0)
+        {
+            await Bot.SendMessage(chatId, "⚠️ That would remove all words. Please keep at least one.", cancellationToken: ct);
+            return;
+        }
+
+        MutateState(userId, s =>
+        {
+            s.State = UserState.None;
+            s.GenPreview = updated;
+        });
+
+        await Bot.SendMessage(
+            chatId,
+            $"✅ Removed {indices.Count} word(s). Updated preview:",
+            cancellationToken: ct);
+
+        await GenerateAndShowExistingPreviewAsync(userId, chatId, ct);
+    }
+
+    private async Task GenerateAndShowExistingPreviewAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var state = GetState(userId);
+        var student = await Db.GetUserAsync(state.SelectedStudentId!.Value);
+        var topicNote = state.GenTopic is not null ? $" · 🏷️ _{WordFormatter.EscapeMarkdown(state.GenTopic)}_" : string.Empty;
+        var header = $"🤖 *{state.GenPreview.Count} {state.GenLevel} words* for *{WordFormatter.EscapeMarkdown(student?.DisplayName ?? string.Empty)}*{topicNote}:";
+        var body = string.Join("\n\n", state.GenPreview.Select(word =>
+        {
+            var levelTag = word.EnglishLevel is not null ? $"*[{word.EnglishLevel}]* " : string.Empty;
+            return $"{levelTag}{WordFormatter.EscapeMarkdown(word.Translation)}";
+        }));
+
+        await Bot.SendMessage(
+            chatId,
+            $"{header}\n\n{body}",
+            parseMode: ParseMode.Markdown,
+            replyMarkup: Keyboards.GenPreviewButtons(),
+            cancellationToken: ct);
     }
 
     private async Task ConfirmGenPreviewAsync(long userId, long chatId, CancellationToken ct)

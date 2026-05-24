@@ -116,6 +116,9 @@ public sealed class BotService(
             case UserState.AwaitingGenTopic:
                 await teacher.HandleGenTopicInputAsync(userId, chatId, text, ct);
                 break;
+            case UserState.AwaitingWordRemoval:
+                await teacher.HandleWordRemovalInputAsync(userId, chatId, text, ct);
+                break;
             default:
                 var existingUser = await db.GetUserAsync(userId);
                 if (existingUser is null)
