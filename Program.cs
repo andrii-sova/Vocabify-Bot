@@ -16,6 +16,9 @@ var config = new ConfigurationBuilder()
 var botToken = config["BotToken"]!;
 var claudeApiKey = config["ClaudeApiKey"]!;
 var connectionString = config.GetConnectionString("Default")!;
+var allowedTeachers = (config.GetSection("AllowedTeachers").Get<string[]>() ?? [])
+    .Select(u => u.TrimStart('@').ToLowerInvariant())
+    .ToHashSet();
 
 var services = new ServiceCollection();
 services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(botToken));
@@ -23,7 +26,11 @@ services.AddSingleton(_ => new DbContextOptionsBuilder<EnglishBotDbContext>().Us
 services.AddSingleton<IDatabaseService, DatabaseService>();
 services.AddSingleton<IOpenAiService>(_ => new ClaudeService(claudeApiKey));
 services.AddSingleton<ConversationStateManager>();
-services.AddSingleton<RegistrationHandler>();
+services.AddSingleton<RegistrationHandler>(_ => new RegistrationHandler(
+    _.GetRequiredService<ITelegramBotClient>(),
+    _.GetRequiredService<IDatabaseService>(),
+    _.GetRequiredService<ConversationStateManager>(),
+    allowedTeachers));
 services.AddSingleton<TeacherHandler>();
 services.AddSingleton<StudentHandler>();
 services.AddSingleton<WordEntryHandler>();

@@ -7,7 +7,11 @@ using VocabifyBot.UI;
 
 namespace VocabifyBot.Services.Handlers;
 
-public sealed class RegistrationHandler(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
+public sealed class RegistrationHandler(
+    ITelegramBotClient bot,
+    IDatabaseService db,
+    ConversationStateManager states,
+    IReadOnlySet<string> allowedTeachers)
     : HandlerBase(bot, db, states)
 {
     public Task ShowRoleSelectionAsync(long chatId, CancellationToken ct) =>
@@ -31,6 +35,15 @@ public sealed class RegistrationHandler(ITelegramBotClient bot, IDatabaseService
         switch (data)
         {
             case "role_teacher":
+                if (!IsTeacherAllowed(from.Username))
+                {
+                    await Bot.SendMessage(
+                        chatId,
+                        "🚫 You are not authorised to register as a teacher.\n\nPlease continue as a student.",
+                        replyMarkup: Keyboards.RoleSelection(),
+                        cancellationToken: ct);
+                    return;
+                }
                 await RegisterUserAsync(from.Id, from, "Teacher", chatId, ct);
                 break;
             case "role_student":
@@ -147,4 +160,8 @@ public sealed class RegistrationHandler(ITelegramBotClient bot, IDatabaseService
             replyMarkup: Keyboards.BackButton("back_to_menu"),
             cancellationToken: ct);
     }
+
+    private bool IsTeacherAllowed(string? username) =>
+        !string.IsNullOrEmpty(username) &&
+        allowedTeachers.Contains(username.ToLowerInvariant());
 }
