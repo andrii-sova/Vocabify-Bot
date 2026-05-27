@@ -1,15 +1,15 @@
 using FluentAssertions;
 using NSubstitute;
 using Telegram.Bot;
-using VocabifyBot.Interfaces;
-using VocabifyBot.Models;
-using VocabifyBot.Services;
-using VocabifyBot.Services.Handlers;
+using KnowlBot.Interfaces;
+using KnowlBot.Models;
+using KnowlBot.Services;
+using KnowlBot.Services.Handlers;
 using Xunit;
-using DbUser = VocabifyBot.Models.User;
+using DbUser = KnowlBot.Models.User;
 using TgUser = Telegram.Bot.Types.User;
 
-namespace VocabifyBot.Tests;
+namespace KnowlBot.Tests;
 
 public class RegistrationHandlerTests
 {

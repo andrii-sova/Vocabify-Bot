@@ -1,8 +1,8 @@
 using MongoDB.Driver;
-using VocabifyBot.Interfaces;
-using VocabifyBot.Models;
+using KnowlBot.Interfaces;
+using KnowlBot.Models;
 
-namespace VocabifyBot.Services;
+namespace KnowlBot.Services;
 
 public sealed class DatabaseService : IDatabaseService
 {

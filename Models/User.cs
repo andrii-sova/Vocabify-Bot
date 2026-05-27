@@ -1,6 +1,6 @@
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace VocabifyBot.Models;
+namespace KnowlBot.Models;
 
 public class User
 {

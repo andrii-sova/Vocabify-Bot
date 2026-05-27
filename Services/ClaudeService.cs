@@ -1,9 +1,9 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using VocabifyBot.Interfaces;
+using KnowlBot.Interfaces;
 
-namespace VocabifyBot.Services;
+namespace KnowlBot.Services;
 
 public sealed class ClaudeService : IOpenAiService
 {

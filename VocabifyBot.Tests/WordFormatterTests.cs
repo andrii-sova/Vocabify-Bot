@@ -1,9 +1,9 @@
 using FluentAssertions;
-using VocabifyBot.Models;
-using VocabifyBot.UI;
+using KnowlBot.Models;
+using KnowlBot.UI;
 using Xunit;
 
-namespace VocabifyBot.Tests;
+namespace KnowlBot.Tests;
 
 public class WordFormatterTests
 {

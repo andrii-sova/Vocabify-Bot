@@ -1,4 +1,4 @@
-namespace VocabifyBot.Interfaces;
+namespace KnowlBot.Interfaces;
 
 public interface IOpenAiService
 {

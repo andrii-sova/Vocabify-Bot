@@ -1,4 +1,4 @@
-namespace VocabifyBot.Models;
+namespace KnowlBot.Models;
 
 public sealed record PendingWordEntry
 {

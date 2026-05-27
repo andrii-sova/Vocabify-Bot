@@ -1,9 +1,9 @@
 using FluentAssertions;
-using VocabifyBot.Models;
-using VocabifyBot.Services;
+using KnowlBot.Models;
+using KnowlBot.Services;
 using Xunit;
 
-namespace VocabifyBot.Tests;
+namespace KnowlBot.Tests;
 
 public class ConversationStateManagerTests
 {

@@ -1,13 +1,13 @@
 using FluentAssertions;
 using NSubstitute;
 using Telegram.Bot;
-using VocabifyBot.Interfaces;
-using VocabifyBot.Models;
-using VocabifyBot.Services;
-using VocabifyBot.Services.Handlers;
+using KnowlBot.Interfaces;
+using KnowlBot.Models;
+using KnowlBot.Services;
+using KnowlBot.Services.Handlers;
 using Xunit;
 
-namespace VocabifyBot.Tests;
+namespace KnowlBot.Tests;
 
 /// <summary>
 /// Tests for BotService static callback-routing predicates and ConversationStateManager

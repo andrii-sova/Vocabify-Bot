@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
-using VocabifyBot.Models;
+using KnowlBot.Models;
 
-namespace VocabifyBot.Services;
+namespace KnowlBot.Services;
 
 public sealed class ConversationStateManager
 {

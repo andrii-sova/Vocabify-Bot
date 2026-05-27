@@ -3,11 +3,11 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using VocabifyBot.Interfaces;
-using VocabifyBot.Models;
-using VocabifyBot.Services.Handlers;
+using KnowlBot.Interfaces;
+using KnowlBot.Models;
+using KnowlBot.Services.Handlers;
 
-namespace VocabifyBot.Services;
+namespace KnowlBot.Services;
 
 public sealed class BotService(
     ITelegramBotClient bot,

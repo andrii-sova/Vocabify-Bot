@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
-using VocabifyBot.Models;
+using KnowlBot.Models;
 
-namespace VocabifyBot.UI;
+namespace KnowlBot.UI;
 
 public static class WordFormatter
 {

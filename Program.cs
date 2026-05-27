@@ -2,9 +2,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Telegram.Bot;
-using VocabifyBot.Interfaces;
-using VocabifyBot.Services;
-using VocabifyBot.Services.Handlers;
+using KnowlBot.Interfaces;
+using KnowlBot.Services;
+using KnowlBot.Services.Handlers;
 
 var config = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)

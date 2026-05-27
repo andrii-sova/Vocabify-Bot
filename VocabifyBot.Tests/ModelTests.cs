@@ -1,8 +1,8 @@
 using FluentAssertions;
-using VocabifyBot.Models;
+using KnowlBot.Models;
 using Xunit;
 
-namespace VocabifyBot.Tests;
+namespace KnowlBot.Tests;
 
 public class ModelTests
 {

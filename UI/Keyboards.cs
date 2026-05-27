@@ -1,7 +1,7 @@
-using VocabifyBot.Models;
+using KnowlBot.Models;
 using Telegram.Bot.Types.ReplyMarkups;
 
-namespace VocabifyBot.UI;
+namespace KnowlBot.UI;
 
 public static class Keyboards
 {

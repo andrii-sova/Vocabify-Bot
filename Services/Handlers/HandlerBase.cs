@@ -1,10 +1,10 @@
 using Telegram.Bot;
 using Telegram.Bot.Types.ReplyMarkups;
-using VocabifyBot.Interfaces;
-using VocabifyBot.Models;
-using VocabifyBot.UI;
+using KnowlBot.Interfaces;
+using KnowlBot.Models;
+using KnowlBot.UI;
 
-namespace VocabifyBot.Services.Handlers;
+namespace KnowlBot.Services.Handlers;
 
 public abstract class HandlerBase(ITelegramBotClient bot, IDatabaseService db, ConversationStateManager states)
 {

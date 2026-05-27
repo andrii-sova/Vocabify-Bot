@@ -1,6 +1,6 @@
-using VocabifyBot.Models;
+using KnowlBot.Models;
 
-namespace VocabifyBot.Interfaces;
+namespace KnowlBot.Interfaces;
 
 public interface IDatabaseService
 {
