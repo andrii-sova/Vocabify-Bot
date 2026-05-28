@@ -1,0 +1,53 @@
+name: Deploy to DigitalOcean Droplet
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run Unit Tests
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: Publish application
+        run: dotnet publish -c Release -r linux-x64 --self-contained false -o ./publish --no-restore
+
+      - name: Deploy to Droplet (as deploy user)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            echo "🚀 Starting deployment as deploy user..."
+
+            # Ensure directory exists
+            mkdir -p ~/telegram-bot
+            
+            # Stop old instance
+            pkill -f "Telegram.Bot.dll" || true
+            sleep 2
+
+            # Deploy new version
+            rm -rf ~/telegram-bot/*
+            cp -r /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/publish/* ~/telegram-bot/
+            
+            chmod +x ~/telegram-bot/restart.sh || true
+
+            # Restart bot
+            cd ~/telegram-bot
+            ./restart.sh
+
+            echo "Bot successfully deployed"
