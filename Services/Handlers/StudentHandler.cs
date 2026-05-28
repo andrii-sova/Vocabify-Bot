@@ -15,6 +15,15 @@ public sealed class StudentHandler(ITelegramBotClient bot, IDatabaseService db, 
         switch (data)
         {
             case "menu_add_words":
+                var student = await Db.GetUserAsync(userId);
+                if (student is null || !student.IsActivated)
+                {
+                    await Bot.SendMessage(
+                        chatId,
+                        "🔒 Adding words is only available once a teacher has added you to their group.",
+                        cancellationToken: ct);
+                    return;
+                }
                 await Bot.SendMessage(
                     chatId,
                     "📝 How would you like to add words?",
