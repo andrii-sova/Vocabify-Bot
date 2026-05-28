@@ -52,10 +52,6 @@ jobs:
           key: ${{ secrets.DROPLET_SSH_KEY }}
           passphrase: ${{ secrets.DROPLET_SSH_PASSPHRASE }}
           script: |
-            echo "Starting deployment..."
-            pkill -f "KnowlBot.dll" || true
+            sudo systemctl restart knowlbot
             sleep 2
-            chmod +x ~/telegram-bot/restart.sh || true
-            cd ~/telegram-bot
-            ./restart.sh
-            echo "Bot successfully deployed"
+            systemctl is-active --quiet knowlbot && echo "Bot successfully deployed" || (echo "Bot failed to start"; exit 1)
